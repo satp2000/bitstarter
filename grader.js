@@ -24,8 +24,10 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://hidden-hamlet-8278.herokuapp.com";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -36,16 +38,14 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
-var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
-};
-
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+var checkHtmlFile = function(htmlfile, checksfile,opt) {
+
+    if (opt == "file") {$ = cheerio.load(fs.readFileSync(htmlfile));}
+    if (opt == "url") {$ = cheerio.load(htmlfile);}
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
@@ -54,6 +54,14 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     }
     return out;
 };
+
+var process_stream = function(stream,CHECKSFILE_DEFAULT,opt){
+
+ var checkJson = checkHtmlFile(stream, CHECKSFILE_DEFAULT,opt); 
+ var outJson = JSON.stringify(checkJson, null, 4); 
+ console.log(outJson);
+
+}
 
 var clone = function(fn) {
     // Workaround for commander.js issue.
@@ -65,10 +73,18 @@ if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url>', 'URL: http://hidden-hamlet-8278.herokuapp.com', URL_DEFAULT)
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    if(program.url) {
+	var opt = "url";
+	rest.get(URL_DEFAULT).on('complete',function(result){
+          if (result instanceof Error) {
+               console.log('Error: ' + result.message);
+               this.retry(5000); // try again after 5 sec
+               process.exit(1);
+          } else { process_stream(result, CHECKSFILE_DEFAULT,opt); }
+        });
+    } else { var opt = "file"; process_stream(HTMLFILE_DEFAULT, CHECKSFILE_DEFAULT,opt);}
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
